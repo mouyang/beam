@@ -39,10 +39,14 @@ import org.apache.avro.generic.GenericData;
 import org.apache.beam.sdk.io.gcp.bigquery.BigQueryUtils.ConversionOptions.TruncateTimestamps;
 import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.schemas.Schema.FieldType;
+import org.apache.beam.sdk.schemas.logicaltypes.PassThroughLogicalType;
 import org.apache.beam.sdk.schemas.utils.AvroUtils;
 import org.apache.beam.sdk.values.Row;
 import org.joda.time.DateTime;
+import org.joda.time.DateTimeZone;
 import org.joda.time.Instant;
+import org.joda.time.LocalDate;
+import org.joda.time.LocalTime;
 import org.joda.time.chrono.ISOChronology;
 import org.joda.time.format.ISODateTimeFormat;
 import org.junit.Test;
@@ -63,6 +67,11 @@ public class BigQueryUtilsTest {
           .addNullableField("timestamp_variant4", Schema.FieldType.DATETIME)
           .addNullableField("valid", Schema.FieldType.BOOLEAN)
           .addNullableField("binary", Schema.FieldType.BYTES)
+          .addNullableField(
+              "date",
+              FieldType.logicalType(
+                  new PassThroughLogicalType<Instant>(
+                      "SqlDateType", FieldType.STRING, "", FieldType.DATETIME) {}))
           .build();
 
   private static final Schema ARRAY_TYPE =
@@ -106,6 +115,9 @@ public class BigQueryUtilsTest {
   private static final TableFieldSchema BINARY =
       new TableFieldSchema().setName("binary").setType(StandardSQLTypeName.BYTES.toString());
 
+  private static final TableFieldSchema DATE =
+      new TableFieldSchema().setName("date").setType(StandardSQLTypeName.DATE.toString());
+
   private static final TableFieldSchema IDS =
       new TableFieldSchema()
           .setName("ids")
@@ -127,7 +139,8 @@ public class BigQueryUtilsTest {
                   TIMESTAMP_VARIANT3,
                   TIMESTAMP_VARIANT4,
                   VALID,
-                  BINARY));
+                  BINARY,
+                  DATE));
 
   private static final TableFieldSchema ROWS =
       new TableFieldSchema()
@@ -144,7 +157,8 @@ public class BigQueryUtilsTest {
                   TIMESTAMP_VARIANT3,
                   TIMESTAMP_VARIANT4,
                   VALID,
-                  BINARY));
+                  BINARY,
+                  DATE));
 
   // Make sure that chosen BYTES test value is the same after a full base64 round trip.
   private static final Row FLAT_ROW =
@@ -164,7 +178,8 @@ public class BigQueryUtilsTest {
                   .parseDateTime("2019-08-18T15:52:07.123"),
               new DateTime(123456),
               false,
-              Base64.getDecoder().decode("ABCD1234"))
+              Base64.getDecoder().decode("ABCD1234"),
+              new LocalDate(2020, 7, 26).toDateTime(new LocalTime(0, 0, 0, 0), DateTimeZone.UTC))
           .build();
 
   private static final TableRow BQ_FLAT_ROW =
@@ -181,11 +196,12 @@ public class BigQueryUtilsTest {
               String.valueOf(
                   new DateTime(123456L, ISOChronology.getInstanceUTC()).getMillis() / 1000.0D))
           .set("valid", "false")
-          .set("binary", "ABCD1234");
+          .set("binary", "ABCD1234")
+          .set("date", "2020-07-26");
 
   private static final Row NULL_FLAT_ROW =
       Row.withSchema(FLAT_TYPE)
-          .addValues(null, null, null, null, null, null, null, null, null)
+          .addValues(null, null, null, null, null, null, null, null, null, null)
           .build();
 
   private static final TableRow BQ_NULL_FLAT_ROW =
@@ -198,7 +214,8 @@ public class BigQueryUtilsTest {
           .set("timestamp_variant3", null)
           .set("timestamp_variant4", null)
           .set("valid", null)
-          .set("binary", null);
+          .set("binary", null)
+          .set("date", null);
 
   private static final Row ARRAY_ROW =
       Row.withSchema(ARRAY_TYPE).addValues((Object) Arrays.asList(123L, 124L)).build();
@@ -233,7 +250,8 @@ public class BigQueryUtilsTest {
                   TIMESTAMP_VARIANT3,
                   TIMESTAMP_VARIANT4,
                   VALID,
-                  BINARY));
+                  BINARY,
+                  DATE));
 
   private static final TableSchema BQ_ARRAY_TYPE = new TableSchema().setFields(Arrays.asList(IDS));
 
@@ -271,7 +289,8 @@ public class BigQueryUtilsTest {
             TIMESTAMP_VARIANT3,
             TIMESTAMP_VARIANT4,
             VALID,
-            BINARY));
+            BINARY,
+            DATE));
   }
 
   @Test
@@ -301,7 +320,8 @@ public class BigQueryUtilsTest {
             TIMESTAMP_VARIANT3,
             TIMESTAMP_VARIANT4,
             VALID,
-            BINARY));
+            BINARY,
+            DATE));
   }
 
   @Test
@@ -324,7 +344,8 @@ public class BigQueryUtilsTest {
             TIMESTAMP_VARIANT3,
             TIMESTAMP_VARIANT4,
             VALID,
-            BINARY));
+            BINARY,
+            DATE));
   }
 
   @Test
@@ -332,7 +353,7 @@ public class BigQueryUtilsTest {
     TableRow row = toTableRow().apply(FLAT_ROW);
     System.out.println(row);
 
-    assertThat(row.size(), equalTo(9));
+    assertThat(row.size(), equalTo(10));
     assertThat(row, hasEntry("id", "123"));
     assertThat(row, hasEntry("value", "123.456"));
     assertThat(row, hasEntry("name", "test"));
@@ -354,7 +375,7 @@ public class BigQueryUtilsTest {
 
     assertThat(row.size(), equalTo(1));
     row = (TableRow) row.get("row");
-    assertThat(row.size(), equalTo(9));
+    assertThat(row.size(), equalTo(10));
     assertThat(row, hasEntry("id", "123"));
     assertThat(row, hasEntry("value", "123.456"));
     assertThat(row, hasEntry("value", "123.456"));
@@ -371,7 +392,7 @@ public class BigQueryUtilsTest {
 
     assertThat(row.size(), equalTo(1));
     row = ((List<TableRow>) row.get("rows")).get(0);
-    assertThat(row.size(), equalTo(9));
+    assertThat(row.size(), equalTo(10));
     assertThat(row, hasEntry("id", "123"));
     assertThat(row, hasEntry("value", "123.456"));
     assertThat(row, hasEntry("name", "test"));
@@ -383,7 +404,7 @@ public class BigQueryUtilsTest {
   public void testToTableRow_null_row() {
     TableRow row = toTableRow().apply(NULL_FLAT_ROW);
 
-    assertThat(row.size(), equalTo(9));
+    assertThat(row.size(), equalTo(10));
     assertThat(row, hasEntry("id", null));
     assertThat(row, hasEntry("value", null));
     assertThat(row, hasEntry("name", null));

@@ -103,7 +103,18 @@ public class BigQueryUtils {
    */
   private static final DateTimeFormatter BIGQUERY_TIMESTAMP_PARSER;
 
+  private static final DateTimeFormatter BIGQUERY_DATE_PARSER;
+
   static {
+    BIGQUERY_DATE_PARSER =
+        new DateTimeFormatterBuilder()
+            .appendYear(4, 4)
+            .appendLiteral('-')
+            .appendMonthOfYear(2)
+            .appendLiteral('-')
+            .appendDayOfMonth(2)
+            .toFormatter()
+            .withZoneUTC();
     DateTimeFormatter dateTimePart =
         new DateTimeFormatterBuilder()
             .appendYear(4, 4)
@@ -177,6 +188,10 @@ public class BigQueryUtils {
                 if (str.endsWith("UTC")) {
                   return BIGQUERY_TIMESTAMP_PARSER.parseDateTime(str).toDateTime(DateTimeZone.UTC);
                 } else {
+                  try {
+                    return BIGQUERY_DATE_PARSER.parseDateTime(str);
+                  } catch (IllegalArgumentException e) {
+                  }
                   return new DateTime(
                       (long) (Double.parseDouble(str) * 1000), ISOChronology.getInstanceUTC());
                 }
@@ -184,11 +199,16 @@ public class BigQueryUtils {
           .put(TypeName.BYTES, str -> BaseEncoding.base64().decode(str))
           .build();
 
+  private static final FieldType SQL_DATE_TYPE =
+      FieldType.logicalType(
+          new PassThroughLogicalType<Instant>(
+              "SqlDateType", FieldType.STRING, "", FieldType.DATETIME) {});
+
   // TODO: BigQuery code should not be relying on Calcite metadata fields. If so, this belongs
   // in the SQL package.
   private static final Map<String, StandardSQLTypeName> BEAM_TO_BIGQUERY_LOGICAL_MAPPING =
       ImmutableMap.<String, StandardSQLTypeName>builder()
-          .put("SqlDateType", StandardSQLTypeName.DATE)
+          .put(SQL_DATE_TYPE.getLogicalType().getIdentifier(), StandardSQLTypeName.DATE)
           .put("SqlTimeType", StandardSQLTypeName.TIME)
           .put("SqlTimeWithLocalTzType", StandardSQLTypeName.TIME)
           .put("SqlTimestampWithLocalTzType", StandardSQLTypeName.DATETIME)
@@ -243,9 +263,7 @@ public class BigQueryUtils {
             new PassThroughLogicalType<Instant>(
                 "SqlTimeType", FieldType.STRING, "", FieldType.DATETIME) {});
       case "DATE":
-        return FieldType.logicalType(
-            new PassThroughLogicalType<Instant>(
-                "SqlDateType", FieldType.STRING, "", FieldType.DATETIME) {});
+        return SQL_DATE_TYPE;
       case "DATETIME":
         return FieldType.logicalType(
             new PassThroughLogicalType<Instant>(
@@ -522,6 +540,15 @@ public class BigQueryUtils {
       return JSON_VALUE_PARSERS.get(fieldType.getTypeName()).apply((String) jsonBQValue);
     }
 
+    if (jsonBQValue instanceof String && fieldType.getTypeName().isLogicalType()) {
+      Schema.LogicalType logicalType = fieldType.getLogicalType();
+      if (FieldType.STRING.equals(logicalType.getArgumentType())) {
+        return JSON_VALUE_PARSERS
+            .get(logicalType.getBaseType().getTypeName())
+            .apply((String) jsonBQValue);
+      }
+    }
+
     if (jsonBQValue instanceof List) {
       return ((List<Object>) jsonBQValue)
           .stream()
@@ -547,7 +574,10 @@ public class BigQueryUtils {
   // TODO: BigQuery shouldn't know about SQL internal logical types.
   private static final Set<String> SQL_DATE_TIME_TYPES =
       ImmutableSet.of(
-          "SqlDateType", "SqlTimeType", "SqlTimeWithLocalTzType", "SqlTimestampWithLocalTzType");
+          SQL_DATE_TYPE.getLogicalType().getIdentifier(),
+          "SqlTimeType",
+          "SqlTimeWithLocalTzType",
+          "SqlTimestampWithLocalTzType");
   private static final Set<String> SQL_STRING_TYPES = ImmutableSet.of("SqlCharType");
 
   /**
