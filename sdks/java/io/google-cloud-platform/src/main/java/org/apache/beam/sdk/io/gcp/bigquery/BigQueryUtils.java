@@ -105,29 +105,44 @@ public class BigQueryUtils {
 
   private static final DateTimeFormatter BIGQUERY_DATE_PARSER;
 
+  private static final DateTimeFormatter BIGQUERY_TIME_PARSER;
+
   static {
-    BIGQUERY_DATE_PARSER =
+    DateTimeFormatter datePart =
         new DateTimeFormatterBuilder()
             .appendYear(4, 4)
             .appendLiteral('-')
             .appendMonthOfYear(2)
             .appendLiteral('-')
             .appendDayOfMonth(2)
-            .toFormatter()
-            .withZoneUTC();
-    DateTimeFormatter dateTimePart =
+            .toFormatter();
+    DateTimeFormatter timePart =
         new DateTimeFormatterBuilder()
-            .appendYear(4, 4)
-            .appendLiteral('-')
-            .appendMonthOfYear(2)
-            .appendLiteral('-')
-            .appendDayOfMonth(2)
-            .appendLiteral(' ')
             .appendHourOfDay(2)
             .appendLiteral(':')
             .appendMinuteOfHour(2)
             .appendLiteral(':')
             .appendSecondOfMinute(2)
+            .toFormatter();
+    DateTimeFormatter dateTimePart =
+        new DateTimeFormatterBuilder()
+            .append(datePart)
+            .appendLiteral(' ')
+            .append(timePart)
+            .toFormatter();
+    BIGQUERY_DATE_PARSER =
+        new DateTimeFormatterBuilder()
+            .append(datePart)
+            .toFormatter()
+            .withZoneUTC();
+    BIGQUERY_TIME_PARSER =
+        new DateTimeFormatterBuilder()
+            .append(timePart)
+            .appendOptional(
+                new DateTimeFormatterBuilder()
+                    .appendLiteral('.')
+                    .appendFractionOfSecond(0, 6)
+                    .toParser())
             .toFormatter()
             .withZoneUTC();
     BIGQUERY_TIMESTAMP_PARSER =
@@ -192,6 +207,10 @@ public class BigQueryUtils {
                     return BIGQUERY_DATE_PARSER.parseDateTime(str);
                   } catch (IllegalArgumentException e) {
                   }
+                  try {
+                    return BIGQUERY_TIME_PARSER.parseDateTime(str);
+                  } catch (IllegalArgumentException e) {
+                  }
                   return new DateTime(
                       (long) (Double.parseDouble(str) * 1000), ISOChronology.getInstanceUTC());
                 }
@@ -204,12 +223,17 @@ public class BigQueryUtils {
           new PassThroughLogicalType<Instant>(
               "SqlDateType", FieldType.STRING, "", FieldType.DATETIME) {});
 
+  private static final FieldType SQL_TIME_TYPE =
+      FieldType.logicalType(
+          new PassThroughLogicalType<Instant>(
+              "SqlTimeType", FieldType.STRING, "", FieldType.DATETIME) {});
+
   // TODO: BigQuery code should not be relying on Calcite metadata fields. If so, this belongs
   // in the SQL package.
   private static final Map<String, StandardSQLTypeName> BEAM_TO_BIGQUERY_LOGICAL_MAPPING =
       ImmutableMap.<String, StandardSQLTypeName>builder()
           .put(SQL_DATE_TYPE.getLogicalType().getIdentifier(), StandardSQLTypeName.DATE)
-          .put("SqlTimeType", StandardSQLTypeName.TIME)
+          .put(SQL_TIME_TYPE.getLogicalType().getIdentifier(), StandardSQLTypeName.TIME)
           .put("SqlTimeWithLocalTzType", StandardSQLTypeName.TIME)
           .put("SqlTimestampWithLocalTzType", StandardSQLTypeName.DATETIME)
           .put("SqlCharType", StandardSQLTypeName.STRING)
@@ -259,9 +283,7 @@ public class BigQueryUtils {
       case "TIMESTAMP":
         return FieldType.DATETIME;
       case "TIME":
-        return FieldType.logicalType(
-            new PassThroughLogicalType<Instant>(
-                "SqlTimeType", FieldType.STRING, "", FieldType.DATETIME) {});
+        return SQL_TIME_TYPE;
       case "DATE":
         return SQL_DATE_TYPE;
       case "DATETIME":
@@ -575,7 +597,7 @@ public class BigQueryUtils {
   private static final Set<String> SQL_DATE_TIME_TYPES =
       ImmutableSet.of(
           SQL_DATE_TYPE.getLogicalType().getIdentifier(),
-          "SqlTimeType",
+          SQL_TIME_TYPE.getLogicalType().getIdentifier(),
           "SqlTimeWithLocalTzType",
           "SqlTimestampWithLocalTzType");
   private static final Set<String> SQL_STRING_TYPES = ImmutableSet.of("SqlCharType");
