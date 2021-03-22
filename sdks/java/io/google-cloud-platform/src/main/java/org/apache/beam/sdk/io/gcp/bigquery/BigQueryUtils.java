@@ -850,6 +850,13 @@ public class BigQueryUtils {
       }
     }
 
+    if ((jsonBQValue instanceof Boolean
+            && FieldType.BOOLEAN.getTypeName().equals(fieldType.getTypeName()))
+        || (jsonBQValue instanceof Double
+            && FieldType.DOUBLE.getTypeName().equals(fieldType.getTypeName()))) {
+      return jsonBQValue;
+    }
+
     if (jsonBQValue instanceof List) {
       return ((List<Object>) jsonBQValue)
           .stream()

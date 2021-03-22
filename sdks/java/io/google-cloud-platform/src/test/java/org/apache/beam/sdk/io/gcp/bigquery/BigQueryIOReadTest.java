@@ -426,7 +426,9 @@ public class BigQueryIOReadTest implements Serializable {
             .setFields(
                 ImmutableList.of(
                     new TableFieldSchema().setName("name").setType("STRING"),
-                    new TableFieldSchema().setName("number").setType("INTEGER"))));
+                    new TableFieldSchema().setName("number").setType("INTEGER"),
+                    new TableFieldSchema().setName("boolean").setType("BOOLEAN"),
+                    new TableFieldSchema().setName("double").setType("FLOAT"))));
     someTable.setTableReference(
         new TableReference()
             .setProjectId("non-executing-project")
@@ -439,9 +441,21 @@ public class BigQueryIOReadTest implements Serializable {
 
     List<TableRow> records =
         Lists.newArrayList(
-            new TableRow().set("name", "a").set("number", 1L),
-            new TableRow().set("name", "b").set("number", 2L),
-            new TableRow().set("name", "c").set("number", 3L));
+            new TableRow()
+                .set("name", "a")
+                .set("number", 1L)
+                .set("boolean", true)
+                .set("double", 1.0d),
+            new TableRow()
+                .set("name", "b")
+                .set("number", 2L)
+                .set("boolean", false)
+                .set("double", 2.0d),
+            new TableRow()
+                .set("name", "c")
+                .set("number", 3L)
+                .set("boolean", true)
+                .set("double", 3.0d));
 
     fakeDatasetService.insertAll(someTable.getTableReference(), records, null);
 
@@ -462,16 +476,19 @@ public class BigQueryIOReadTest implements Serializable {
     Schema expectedSchema =
         Schema.of(
             Schema.Field.of("name", Schema.FieldType.STRING).withNullable(true),
-            Schema.Field.of("number", Schema.FieldType.INT64).withNullable(true));
+            Schema.Field.of("number", Schema.FieldType.INT64).withNullable(true),
+            Schema.Field.of("boolean", Schema.FieldType.BOOLEAN).withNullable(true),
+            Schema.Field.of("double", Schema.FieldType.DOUBLE).withNullable(true));
     assertEquals(expectedSchema, bqRows.getSchema());
 
-    PCollection<Row> output = bqRows.apply(Select.fieldNames("name", "number"));
+    PCollection<Row> output =
+        bqRows.apply(Select.fieldNames("name", "number", "boolean", "double"));
     PAssert.that(output)
         .containsInAnyOrder(
             ImmutableList.of(
-                Row.withSchema(expectedSchema).addValues("a", 1L).build(),
-                Row.withSchema(expectedSchema).addValues("b", 2L).build(),
-                Row.withSchema(expectedSchema).addValues("c", 3L).build()));
+                Row.withSchema(expectedSchema).addValues("a", 1L, true, 1.0d).build(),
+                Row.withSchema(expectedSchema).addValues("b", 2L, false, 2.0d).build(),
+                Row.withSchema(expectedSchema).addValues("c", 3L, true, 3.0d).build()));
 
     p.run();
   }
